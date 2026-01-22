@@ -1,5 +1,6 @@
 from typing import Dict, Any
 import json
+from jinja2 import Template
 
 
 class PromptManager:
@@ -8,31 +9,21 @@ class PromptManager:
     @staticmethod
     def get_intent_recognition_prompt() -> str:
         """意图识别模块的提示词"""
-        return """
+        template_str = """
+        <system>
         你是一个理财助手的意图识别模块。请严格根据用户最新一句话，从以下选项中选择最匹配的 intent：
         log_expense, view_recent_expenses, consult, generate_plan, update_plan, delete_plan, review_plan, review_profile, edit_profile, unknown
         要求：只输出intent，不要解释，不要标点，不要多余内容。
+        </system>
         """
-    @staticmethod
-    def get_plan_locate_prompt() -> str:
-        """计划定位提示词"""
-        return """
-        你是一个经济规划助手。
-        
-
-        当前用户上下文：
-        - 用户 ID：{{user_id}}
-        - 用户档案：{{profile}}
-
-        返回格式：
-        """
+        template = Template(template_str)
+        return template.render()
 
     @staticmethod
     def get_chatbot_system_prompt(user_id: str, profile: Dict[str, Any], extra_guidance: str = "") -> str:
         """chatbot主要系统提示词"""
-        profile_json = json.dumps(profile, indent=2, ensure_ascii=False)
-
-        return f"""
+        template_str = """
+        <system>
         你是一个名叫 PocketWise 的个人理财智能助手，专注于帮助用户理性消费、管理预算、避免冲动花钱。
         你像一位懂理财又贴心的朋友，语气温暖、耐心、略带鼓励，从不居高临下，也不会替用户做决定——
         你只提供清晰、有依据的建议，并主动提问以获取必要信息。
@@ -42,22 +33,32 @@ class PromptManager:
         3. 识别并干预冲动消费
         4. 记录消费行为，持续学习用户习惯
 
-        {extra_guidance}
+        {{ extra_guidance }}
 
         当前用户上下文：
-        - 用户 ID：{user_id}
-        - 用户档案：{profile_json}
+        - 用户 ID：{{ user_id }}
+        - 用户档案：{{ profile_json }}
 
         行为准则：
-        - 调用工具时，**务必**将 user_id 参数设为："{user_id}"。
+        - 调用工具时，**务必**将 user_id 参数设为："{{ user_id }}"。
         - 如果用户档案为空（例如收入为 0），请温和地鼓励用户通过 'edit_user_profile'（编辑用户档案）来完善信息。
         - 所有建议必须基于工具返回的数据，不得主观臆测。
-        - 语言简洁、亲切、有温度，鼓励用户反思，而非指责。"""
+        - 语言简洁、亲切、有温度，鼓励用户反思，而非指责。
+        </system>
+        """
+        template = Template(template_str)
+        profile_json = json.dumps(profile, indent=2, ensure_ascii=False)
+        return template.render(
+            user_id=user_id,
+            profile_json=profile_json,
+            extra_guidance=extra_guidance
+        )
 
     @staticmethod
     def get_plan_agent_prompt() -> str:
         """计划生成agent的提示词"""
-        return """
+        template_str = """
+        <system>
         你是一个经济规划助手。
         1.制定计划
         用户想制定储蓄或消费计划。请引导设定目标金额和周期。
@@ -74,8 +75,8 @@ class PromptManager:
         使用update_plan或delete_plan更新或删除计划。
 
         当前用户上下文：
-        - 用户 ID：{{user_id}}
-        - 用户档案：{{profile}}
+        - 用户 ID：{{ user_id }}
+        - 用户档案：{{ profile }}
 
         计划生成：
         - 计划类型：
@@ -85,7 +86,10 @@ class PromptManager:
         - 月度计划：
         - 周期性提醒：
         - 执行建议：
+        </system>
         """
+        template = Template(template_str)
+        return template.render()
 
     @staticmethod
     def get_intent_guidance_map() -> Dict[str, str]:

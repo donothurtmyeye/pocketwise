@@ -66,7 +66,7 @@ PocketWise 是一个基于 AI 的个人理财智能助手，专注于帮助学�
 
 1. **克隆项目**
 ```bash
-git clone <repository-url>
+git clone <https://github.com/donothurtmyeye/pocketwise.git>
 cd PocketWise
 ```
 
