@@ -37,9 +37,7 @@ def init_db():
                      content     TEXT,
                      start_date  TEXT,
                      goal_amount REAL,
-                     month_plan  TEXT,
-                     remand      TEXT,
-                     suggestion  TEXT,
+                     stages_amount  REAL,
                      status      TEXT
                  )''')
 
@@ -120,18 +118,18 @@ def get_recent_expenses(user_id: str, limit: int = 5) -> List[Dict]:
 # --- Plan Operations ---
 
 def add_plan(user_id: str, plan_type: str, content: str, start_date: str,
-             goal_amount: float = None):
+             stages_amount: float = None, goal_amount: float = None):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute(
-        "INSERT INTO plans (user_id, plan_type, content, start_date, goal_amount, status) VALUES (?, ?, ?, ?, ?, ?)",
-        (user_id, plan_type, content, start_date, goal_amount, "active"))
+        "INSERT INTO plans (user_id, plan_type, content, start_date, goal_amount, stages_amount, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (user_id, plan_type, content, start_date, stages_amount, goal_amount, "active"))
     conn.commit()
     conn.close()
 
 
 def update_plan(plan_id: int, user_id: str, plan_type: str = None, content: str = None,
-                start_date: str = None, goal_amount: float = None, status: str = None) -> bool:
+                start_date: str = None, goal_amount: float = None, stages_amount: float = None, status: str = None) -> bool:
     """更新计划，支持部分字段更新"""
     # 构建更新字段字典，只包含非None值
     updates = {}
@@ -143,6 +141,8 @@ def update_plan(plan_id: int, user_id: str, plan_type: str = None, content: str 
         updates['start_date'] = start_date
     if goal_amount is not None:
         updates['goal_amount'] = goal_amount
+    if stages_amount is not None:
+        updates['stages_amount'] = stages_amount
     if status is not None:
         updates['status'] = status
 
@@ -183,3 +183,16 @@ def get_active_plans(user_id: str) -> List[Dict]:
     conn.close()
     return [dict(row) for row in rows]
 
+
+def get_stage_plan(user_id: str) -> dict:
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT stages_amount FROM plans WHERE user_id = ?", (user_id,))
+    rows = c.fetchall()
+    conn.close()
+    stages_amounts = {}
+    n = 1
+    for row in rows:
+        stages_amounts[f"计划{n}:"] = row
+        n += 1
+    return stages_amounts

@@ -60,12 +60,12 @@ def detect_impulse_buying(user_id: str, description: str, amount: float):
     :param amount: 消费金额。
     :return: dict:{'is_impulse': bool, 'reason': str}
     """
-    # 从 user_id 获取用户状态
+    # 从 user_id 获取用户状态和阶段计划
     user_state = db.get_user_profile(user_id)
+    remind = db.get_stage_plan(user_id)
 
     budget = user_state.get("monthly_budget", 0)
     personality = user_state.get("personality_tags", [])
-
     reasons = []
     is_impulse = False
 
@@ -83,13 +83,14 @@ def detect_impulse_buying(user_id: str, description: str, amount: float):
 
     return {
         "is_impulse": is_impulse,
-        "reason": "; ".join(reasons) if reasons else "看起来是一笔在合理范围内的理性消费。"
+        "reason": "; ".join(reasons) if reasons else "看起来是一笔在合理范围内的理性消费。",
+        "remind": remind if remind else None
     }
 
 
 @tool
 def log_plan(user_id: str, plan_type: str, content: str, start_date: str,
-             goal_amount: float = None):
+             goal_amount: float = None, stages_amount: float = None):
     """
     记录用户的财务计划或目标。
     :param user_id: 用户ID。
@@ -97,8 +98,9 @@ def log_plan(user_id: str, plan_type: str, content: str, start_date: str,
     :param content: 计划具体内容。
     :param start_date: 开始日期（ISO 格式字符串）。
     :param goal_amount: 目标金额（如适用）。
+    :param stages_amount: 阶段划分金额。
     """
-    db.add_plan(user_id, plan_type, content, start_date, goal_amount)
+    db.add_plan(user_id, plan_type, content, start_date, goal_amount, stages_amount)
     return f"计划已保存：{content}"
 
 
@@ -114,7 +116,7 @@ def view_plan(user_id: str):
 
 @tool
 def update_plan(plan_id: int, user_id: str, plan_type: str = None, content: str = None,
-                start_date: str = None, goal_amount: float = None, status: str = None):
+                start_date: str = None, goal_amount: float = None, stages_amount: float = None, status: str = None):
     """
     更新用户计划
     :param plan_id: 计划ID。
@@ -123,9 +125,10 @@ def update_plan(plan_id: int, user_id: str, plan_type: str = None, content: str 
     :param content: 计划内容。
     :param start_date: 开始日期。
     :param goal_amount: 目标金额。
+    :param stages_amount: 阶段划分金额。
     :param status: 计划状态。
     """
-    return db.update_plan(plan_id, user_id, plan_type, content, start_date, goal_amount, status)
+    return db.update_plan(plan_id, user_id, plan_type, content, start_date, goal_amount, stages_amount, status)
 
 @tool
 def delete_plan(plan_id: int, user_id: str):
@@ -135,3 +138,4 @@ def delete_plan(plan_id: int, user_id: str):
     :param user_id: 用户ID。
     """
     return db.delete_plan(plan_id, user_id)
+

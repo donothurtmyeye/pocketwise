@@ -9,12 +9,11 @@ from tools import (
     log_plan,
     view_plan,
     update_plan,
-    delete_plan
+    delete_plan,
 )
 from prompts import get_intent_prompt, get_chatbot_prompt, get_plan_prompt, get_guidance_map
 from langgraph.graph import StateGraph, START, END
-from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage, BaseMessage
 from langchain.agents import create_agent
 from typing import List, Dict, Any
 import database as db
@@ -54,7 +53,7 @@ class ContextManager:
         if len(messages) <= max_messages:
             return {"messages": messages}
         truncated = messages[-max_messages:]
-        return truncated
+        return {"messages": truncated}
 
 class IntentRecognizer:
     """意图识别器"""
@@ -155,7 +154,6 @@ class PlanExecutor:
         return {"messages": [response["messages"][-1].content]}
 
 
-
 class ToolExecutor:
     """工具执行器"""
 
@@ -184,11 +182,7 @@ class ToolExecutor:
             except Exception as e:
                 result = f"工具执行出错: {str(e)}"
 
-        return {
-            "messages": [
-                ToolMessage(content=str(result), tool_call_id=tool_call["id"])
-            ]
-        }
+        return {"messages": [ToolMessage(content=str(result), tool_call_id=tool_call["id"])]}
 
 
 class Router:
