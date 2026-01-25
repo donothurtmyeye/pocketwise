@@ -1,4 +1,4 @@
-from typing import Any, Annotated, Literal, TypedDict
+from typing import Any, Annotated, Literal, TypedDict, List
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 
@@ -13,6 +13,16 @@ Intent = Literal[
     "edit_profile",  # 修改画像字段
     "unknown"
 ]
+
+# 定义工具调用记录的类型
+ToolCallRecord = TypedDict('ToolCallRecord', {
+    'name': str,
+    'arguments': Dict[str, Any],
+    'result': str,
+    'timestamp': float # 可选，用于排序或显示
+})
+
+
 class PocketWiseState(TypedDict):
     # 对话通道
     messages:Annotated[list[BaseMessage],add_messages]
@@ -21,4 +31,6 @@ class PocketWiseState(TypedDict):
     user_profile:dict[str,Any]
     # 意图路由分发
     last_intent:Intent
+    # 工具调用历史
+    tool_call_history: Annotated[List[ToolCallRecord], lambda x, y: x + y] # 使用 lambda 合并列表
 

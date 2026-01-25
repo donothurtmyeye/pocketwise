@@ -271,7 +271,7 @@ def build_graph(checkpointer):
     tool_executor = ToolExecutor(tool_registry)
 
     graph_builder = StateGraph(PocketWiseState)
-
+    
     graph_builder.add_node(GraphConstants.NODE_LOAD_CONTEXT, context_manager.load_user_context)
     graph_builder.add_node(GraphConstants.NODE_RECOGNIZE_INTENT, intent_recognizer.recognize_intent)
     graph_builder.add_node(GraphConstants.NODE_TRUNCATE_HISTORY,
