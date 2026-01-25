@@ -11,11 +11,12 @@ from tools import (
     update_plan,
     delete_plan,
 )
-from prompts import get_intent_prompt, get_chatbot_prompt, get_plan_prompt, get_guidance_map
+from prompts import get_intent_prompt, get_chatbot_prompt, get_plan_prompt, get_summarize_character_prompt, get_guidance_map
 from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage, BaseMessage
 from langchain.agents import create_agent
 from typing import List, Dict, Any
+from datetime import datetime
 import database as db
 
 
@@ -30,6 +31,7 @@ class GraphConstants:
     NODE_RECOGNIZE_INTENT = "recognize_intent"
     NODE_TRUNCATE_HISTORY = "truncate_message_history"
     NODE_CHATBOT = "chatbot"
+    NODE_SUMMARIZE_CHARACTER = "summarize_character"
     NODE_EXECUTE_PLAN = "execute_plan"
     NODE_TOOLS = "tools"
 
@@ -64,9 +66,9 @@ class IntentRecognizer:
     @staticmethod
     def _last_human_text(messages: List[BaseMessage]) -> str:
         """提取最后一条用户消息"""
-        for m in reversed(messages):
-            if isinstance(m, HumanMessage):
-                return str(m.content or "").strip()
+        for msg in reversed(messages):
+            if isinstance(msg, HumanMessage):
+                return str(msg.content or "").strip()
         return ""
 
     def _llm_recognize_intent(self, message: str) -> str:
@@ -111,6 +113,45 @@ class ChatbotService:
     def _bind_tools(self):
         """绑定工具到LLM"""
         return self.llm.bind_tools(self.available_tools)
+
+    def summarize_character(self, state: PocketWiseState) -> Dict[str, Any]:
+        """总结用户性格"""
+        user_id = state["user_id"]
+        hum_texts = []
+        llm_with_tools = self.llm.bind_tools([edit_user_profile])
+        for msg in state["messages"]:
+            if isinstance(msg, HumanMessage):
+                hum_texts.append(str(msg.content or ""))
+
+        # 如果人类消息不足，则不进行总结
+        if len(hum_texts) < 3:
+            return {}
+
+        sys_msg = get_summarize_character_prompt(hum_texts)
+        messages = [SystemMessage(content=sys_msg)]
+        # 调用 LLM 生成性格总结
+        try:
+            response = llm_with_tools.invoke(messages)
+            summary_text = getattr(response, "content", str(response))
+        except Exception:
+            # LLM 调用失败时不阻断主流程
+            return {}
+
+        # 将 summary 合并到当前的 user_profile 中并返回，以便 StateGraph 将其合并回 state
+        current_profile = state.get("user_profile", {}) or {}
+        updated_profile = dict(current_profile)
+        updated_profile["personality_tags"] = summary_text
+
+        # 尝试持久化（非阻塞）
+        try:
+            db.update_user_profile(user_id, updated_profile)
+        except Exception:
+            # 持久化失败也不应阻断流程
+            pass
+
+        return {"user_profile": updated_profile}
+
+
 
     def generate_response(self, state: PocketWiseState) -> Dict[str, Any]:
         """生成聊天响应"""
@@ -235,16 +276,16 @@ def build_graph(checkpointer):
     graph_builder.add_node(GraphConstants.NODE_RECOGNIZE_INTENT, intent_recognizer.recognize_intent)
     graph_builder.add_node(GraphConstants.NODE_TRUNCATE_HISTORY,
                           lambda s: context_manager.truncate_message_history(s, GraphConstants.MAX_MESSAGES))
-
+    graph_builder.add_node(GraphConstants.NODE_SUMMARIZE_CHARACTER, chatbot_service.summarize_character)
     graph_builder.add_node(GraphConstants.NODE_CHATBOT, chatbot_service.generate_response)
     graph_builder.add_node(GraphConstants.NODE_EXECUTE_PLAN, plan_executor.execute_plan)
     graph_builder.add_node(GraphConstants.NODE_TOOLS, tool_executor.execute_tool)
 
     # 编排
     graph_builder.add_edge(START, GraphConstants.NODE_LOAD_CONTEXT)
-    graph_builder.add_edge(GraphConstants.NODE_LOAD_CONTEXT, GraphConstants.NODE_RECOGNIZE_INTENT)
+    graph_builder.add_edge(GraphConstants.NODE_LOAD_CONTEXT, GraphConstants.NODE_SUMMARIZE_CHARACTER)
+    graph_builder.add_edge(GraphConstants.NODE_SUMMARIZE_CHARACTER, GraphConstants.NODE_RECOGNIZE_INTENT)
     graph_builder.add_edge(GraphConstants.NODE_RECOGNIZE_INTENT, GraphConstants.NODE_TRUNCATE_HISTORY)
-
     graph_builder.add_conditional_edges(GraphConstants.NODE_TRUNCATE_HISTORY,
                                         Router.route_by_intent,
                                         {
@@ -252,9 +293,9 @@ def build_graph(checkpointer):
                                             GraphConstants.NODE_CHATBOT: GraphConstants.NODE_CHATBOT
                                         }
                                         )
-    graph_builder.add_edge(GraphConstants.NODE_EXECUTE_PLAN, END)
+    graph_builder.add_edge(GraphConstants.NODE_EXECUTE_PLAN, GraphConstants.NODE_CHATBOT)
+    # graph_builder.add_edge(GraphConstants.NODE_EXECUTE_PLAN, END)
     graph_builder.add_conditional_edges(GraphConstants.NODE_CHATBOT, FlowController.should_continue, [GraphConstants.NODE_TOOLS, END])
     graph_builder.add_edge(GraphConstants.NODE_TOOLS, GraphConstants.NODE_CHATBOT)
-
     return graph_builder.compile(checkpointer=checkpointer)
 

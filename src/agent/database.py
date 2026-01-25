@@ -2,10 +2,13 @@ import sqlite3
 import json
 from datetime import datetime
 from typing import Any, Dict, List
+from pathlib import Path
 
-DB_PATH = "pocketwise.db"
+DB_PATH = str(Path(__file__).resolve().parent / "pocketwise.db")
+# DB_PATH = "pocketwise.db"
 
 def init_db():
+    
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
