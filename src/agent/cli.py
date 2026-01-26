@@ -43,9 +43,8 @@ def main():
                 st.code(json.dumps(record['arguments'], indent=2, ensure_ascii=False), language="json")
                 st.text("Result:")
                 st.code(record['result'], language="text")
-                # 如果需要显示时间戳，可以反注释下面这行
-                # st.caption(f"Timestamp: {datetime.fromtimestamp(record['timestamp'])}")
-                st.divider() # 添加分割线
+                st.caption(f"Timestamp: {datetime.fromtimestamp(record['timestamp'])}")
+                st.divider()
         else:
             st.info("No tool calls executed yet.")
 
