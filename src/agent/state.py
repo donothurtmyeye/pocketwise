@@ -1,4 +1,4 @@
-from typing import Any, Annotated, Literal, TypedDict, List
+from typing import Any, Annotated, Literal, TypedDict, List, Dict
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 
@@ -21,7 +21,15 @@ ToolCallRecord = TypedDict('ToolCallRecord', {
     'result': str,
     'timestamp': float # 可选，用于排序或显示
 })
-
+# 定义一个合并 tool_call_history 的函数
+def merge_tool_histories(left: List[ToolCallRecord], right: List[ToolCallRecord]) -> List[ToolCallRecord]:
+    # 如果左侧没有历史（例如，初始化时），则使用右侧
+    if left is None:
+        left = []
+    # 如果右侧没有历史（例如，某次迭代未调用工具），则使用左侧
+    if right is None:
+        right = []
+    return left + right
 
 class PocketWiseState(TypedDict):
     # 对话通道
@@ -32,5 +40,4 @@ class PocketWiseState(TypedDict):
     # 意图路由分发
     last_intent:Intent
     # 工具调用历史
-    tool_call_history: Annotated[List[ToolCallRecord], lambda x, y: x + y] # 使用 lambda 合并列表
-
+    tool_call_history: Annotated[List[ToolCallRecord], merge_tool_histories]

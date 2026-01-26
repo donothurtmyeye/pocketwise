@@ -1,16 +1,6 @@
 from model import llm_chat, llm_plan
-from state import PocketWiseState, Intent
-from tools import (
-    view_user_profile,
-    edit_user_profile,
-    log_notable_expense,
-    view_recent_expenses,
-    detect_impulse_buying,
-    log_plan,
-    view_plan,
-    update_plan,
-    delete_plan,
-)
+from state import PocketWiseState, Intent, ToolCallRecord
+from tools import *
 from prompts import get_intent_prompt, get_chatbot_prompt, get_plan_prompt, get_summarize_character_prompt, get_guidance_map
 from langgraph.graph import StateGraph, START, END
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage, BaseMessage
@@ -118,7 +108,7 @@ class ChatbotService:
         """总结用户性格"""
         user_id = state["user_id"]
         hum_texts = []
-        llm_with_tools = self.llm.bind_tools([edit_user_profile])
+        llm_with_tools = self.llm.bind_tools([edit_user_profile, view_recent_expenses])
         for msg in state["messages"]:
             if isinstance(msg, HumanMessage):
                 hum_texts.append(str(msg.content or ""))
@@ -150,7 +140,6 @@ class ChatbotService:
             pass
 
         return {"user_profile": updated_profile}
-
 
 
     def generate_response(self, state: PocketWiseState) -> Dict[str, Any]:
@@ -212,6 +201,7 @@ class ToolExecutor:
         tool_call = last_message.tool_calls[0]
         tool_name = tool_call["name"]
         tool_args = tool_call["args"]
+        tool_call_id = tool_call["id"]
 
         full_args = {"user_id": user_id, **tool_args}
 
@@ -223,7 +213,21 @@ class ToolExecutor:
             except Exception as e:
                 result = f"工具执行出错: {str(e)}"
 
-        return {"messages": [ToolMessage(content=str(result), tool_call_id=tool_call["id"])]}
+        # 记录工具调用
+        call_record: ToolCallRecord = {
+            "name": tool_name,
+            "arguments": tool_args,
+            "result": str(result),
+            "timestamp": datetime.now().timestamp()  # 添加时间戳
+        }
+
+        new_state_update = {
+            "messages": [ToolMessage(content=str(result), tool_call_id=tool_call_id)],
+            "tool_call_history": [call_record]  # 追加新的记录
+        }
+
+        return new_state_update
+        # return {"messages": [ToolMessage(content=str(result), tool_call_id=tool_call["id"])]}
 
 
 class Router:
@@ -240,7 +244,7 @@ class Router:
 def build_graph(checkpointer):
     """构建对话图"""
 
-    # 创建服务实例（依赖注入）
+    # 创建实例
     context_manager = ContextManager(db)
     intent_recognizer = IntentRecognizer(llm_chat)
 
@@ -271,7 +275,6 @@ def build_graph(checkpointer):
     tool_executor = ToolExecutor(tool_registry)
 
     graph_builder = StateGraph(PocketWiseState)
-    
     graph_builder.add_node(GraphConstants.NODE_LOAD_CONTEXT, context_manager.load_user_context)
     graph_builder.add_node(GraphConstants.NODE_RECOGNIZE_INTENT, intent_recognizer.recognize_intent)
     graph_builder.add_node(GraphConstants.NODE_TRUNCATE_HISTORY,

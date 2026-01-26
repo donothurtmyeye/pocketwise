@@ -60,31 +60,135 @@ def detect_impulse_buying(user_id: str, description: str, amount: float):
     :param amount: 消费金额。
     :return: dict:{'is_impulse': bool, 'reason': str}
     """
-    # 从 user_id 获取用户状态和阶段计划
+    # 从 user_id 获取用户状态、阶段计划与历史支出
     user_state = db.get_user_profile(user_id)
-    remind = db.get_stage_plan(user_id)
+    active_plans = db.get_active_plans(user_id) or []
+    stage_plan = db.get_stage_plan(user_id) or {}
+    recent_expenses = db.get_recent_expenses(user_id) or []
 
     budget = user_state.get("monthly_budget", 0)
     personality = user_state.get("personality_tags", [])
+
     reasons = []
     is_impulse = False
 
-    if budget > 0 and amount > (budget * 0.1):
-        reasons.append(f"金额 (${amount}) 超过月预算 (${budget}) 的 10%。")
-        is_impulse = True
+    # 1) 阶段性计划参考：若存在活跃计划且本次消费可能影响目标达成，则提醒
+    plan_reasons = []
+    for plan in active_plans:
+        # 只对储蓄/消费节制类计划做简单判断
+        plan_type = plan.get("plan_type", "").lower() if plan else ""
+        stages_amount = plan.get("stages_amount")
+        if plan_type in ("储蓄", "saving", "消费节制", "节省") and stages_amount:
+            plan_reasons.append(f"存在阶段计划（每阶段目标 {stages_amount}），本次消费可能影响计划进度。")
+    if plan_reasons:
+        reasons.extend(plan_reasons)
 
-    impulse_keywords = ["盲盒", "限时", "促销", "折扣", "不需要"]
-    if any(k in description.lower() for k in impulse_keywords):
-        reasons.append("商品描述包含冲动消费触发词。")
-        is_impulse = True
+    # 2) 简单判定算法（多条件打分）
+    score = 0
+    # a) 相对于月预算比例
+    if budget > 0:
+        ratio = amount / budget
+        if ratio >= 0.1:
+            score += 2
+            reasons.append(f"金额占月预算的 {ratio:.1%}（阈值 10%）")
+        elif ratio >= 0.05:
+            score += 1
+            reasons.append(f"金额占月预算的 {ratio:.1%}（较高）")
 
-    if "impulsive" in [t.lower() for t in personality]:
-        reasons.append("用户自我标识为容易冲动。")
+    # b) 相对于最近消费均值
+    avg_recent = 0
+    if recent_expenses:
+        try:
+            avg_recent = sum(e.get("amount", 0) for e in recent_expenses) / len(recent_expenses)
+        except Exception:
+            avg_recent = 0
+    if avg_recent > 0:
+        if amount > avg_recent * 3:
+            score += 2
+            reasons.append(f"消费远高于近期平均（{avg_recent:.2f}），超过 3 倍")
+        elif amount > avg_recent * 1.5:
+            score += 1
+            reasons.append(f"消费高于近期平均（{avg_recent:.2f}）")
+
+    # c) 描述关键词触发
+    impulse_keywords = ["盲盒", "限时", "促销", "折扣", "不需要", "冲动", "买买买"]
+    if any(k in (description or "").lower() for k in impulse_keywords):
+        score += 2
+        reasons.append("商品描述包含冲动消费触发词")
+
+    # d) 用户自我标签
+    if any("impuls" in t.lower() or "冲动" in t for t in personality):
+        score += 1
+        reasons.append("用户档案包含“容易冲动”相关标签")
+
+    # e) 当月已花费与剩余额度（基于最近记录的近似当月支出）
+    from datetime import datetime
+    now = datetime.now()
+    month = now.month
+    year = now.year
+    month_spent = 0
+    for e in recent_expenses:
+        t = e.get("timestamp", "")
+        if t:
+            time = t.split("T")[0]
+            t_year = time.split("-")[0]
+            t_month = time.split("-")[1]
+        if t_year == year and t_month == month:
+            month_spent += float(e.get("amount", 0))
+    
+    remaining = max(0, budget - month_spent) if budget else None
+    if remaining is not None:
+        if remaining <= 0:
+            score += 2
+            reasons.append("本月预算已接近或超支")
+        elif amount > remaining:
+            score += 2
+            reasons.append(f"本次消费超过本月剩余额度（剩余 {remaining:.2f}）")
+        elif amount > remaining * 0.5:
+            score += 1
+            reasons.append(f"本次消费占本月剩余额度较高（剩余 {remaining:.2f}）")
+
+    # 判定阈值：score >=3 认定为冲动消费；2 为可疑；否则非冲动
+    if score >= 3:
+        is_impulse = True
+    elif score == 2:
+        # 可疑，需要用户确认
+        is_impulse = False
+        reasons.append("判定为可疑消费，建议二次确认")
+    else:
+        is_impulse = False
+
+    # 找到与本次描述相似的历史消费例子（简单文本包含匹配）
+    category = []
+    for e in recent_expenses:
+        if category and category.lower() in (e.get("category", "") or "").lower():
+            category.append(e)
+
+    # 组装提醒信息（包含阶段计划、活跃计划与历史记录摘要）
+    remind = {
+        "active_plans": active_plans,
+        "stage_plan": stage_plan,
+        "recent_expenses_sample": recent_expenses[:5],
+        "similar_past_expenses": category[:5],
+        "monthly_budget": budget,
+        "month_spent_estimate": month_spent,
+        "month_remaining_estimate": remaining,
+    }
+
+    recommendation = "无特别建议。"
+    if is_impulse:
+        recommendation = "该消费可能为冲动消费，建议考虑推迟购买、设置等待期或采用预算外决定流程。"
+    elif score == 2:
+        recommendation = "该消费可疑，建议二次确认或缩小购买金额。"
+    else:
+        recommendation = "看起来是理性消费，可记录入账以便后续分析。"
 
     return {
         "is_impulse": is_impulse,
+        "score": score,
         "reason": "; ".join(reasons) if reasons else "看起来是一笔在合理范围内的理性消费。",
-        "remind": remind if remind else None
+        "remind": remind,
+        "recommendation": recommendation
     }
 
 
