@@ -2,7 +2,7 @@ from graph import build_graph
 from langgraph.checkpoint.memory import MemorySaver
 import streamlit as st
 import json
-import datetime
+from datetime import datetime
 
 def main():
     st.set_page_config(page_title="PocketWise")
@@ -43,8 +43,8 @@ def main():
                 st.text("Arguments:")
                 st.code(json.dumps(record['arguments'], indent=2, ensure_ascii=False), language="json")
                 st.text("Result:")
-                st.code(record['result'], language="text")
-                st.caption(f"Timestamp: {datetime.fromtimestamp(record['timestamp'])}")
+                st.code(record['result'], language="text", height = 200)
+                st.caption(f"Timestamp: {datetime.fromtimestamp(float(record['timestamp']))}")
                 st.divider()
         else:
             st.info("No tool calls executed yet.")
