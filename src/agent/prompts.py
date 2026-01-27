@@ -15,6 +15,17 @@ class PromptManager:
         log_expense, view_recent_expenses, consult, generate_plan, update_plan, delete_plan, review_plan, review_profile, edit_profile, unknown
         要求：只输出intent，不要解释，不要标点，不要多余内容。
         </system>
+        
+        <instruction>
+        优先理解同义或相关的表达，查找与意图相关的关键词或短语用于参考。
+        1.关键词匹配：
+        consult: 值得、建议、意见、犹豫、好不好、要不要、划算、明智、考虑、看法、觉得等。
+        unknown: 用户输入与以上所有意图均无关，或过于模糊、无法判断。
+        2.宽泛匹配：
+        如果用户的表达与上述关键词有间接联系或属于同一语义范畴，也应归入对应意图。
+        例如，“我想知道最近花了多少”应归为 `view_recent_expenses`，“你觉得买这个怎么样”应归为 `consult`。
+        3.要求：不要解释，不要标点，不要多余内容，必要时可以结合上下文信息。
+        </instruction>
         """
         template = Template(template_str)
         return template.render()
@@ -44,7 +55,7 @@ class PromptManager:
         行为准则：
         - 调用工具时，务必将 user_id 参数设为："{{ user_id }}"。
         - 如果用户档案为空（例如收入为 0），请温和地鼓励用户通过 'edit_user_profile'（编辑用户档案）来完善信息。
-        - 所有建议必须基于工具返回的数据，不得主观臆测。
+        - 所有建议必须基于工具返回的数据，不得主观臆测，可以同时使用多个工具。
         - 当信息不足时，务必主动询问用户更多信息，不要自行猜测。
         - 语言简洁、亲切、有温度，鼓励用户反思，而非指责。
         </instruction>

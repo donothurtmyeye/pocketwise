@@ -43,7 +43,8 @@ class ContextManager:
         messages: List[BaseMessage] = state["messages"]
         # 无需截断
         if len(messages) <= max_messages:
-            return {"messages": messages}
+            return {}
+            # return {"messages": messages}
         truncated = messages[-max_messages:]
         return {"messages": truncated}
 
